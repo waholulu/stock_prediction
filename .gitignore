@@ -1,0 +1,12 @@
+data/
+results/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.env
+.ipynb_checkpoints/
+wandb/
+*.pkl
+*.joblib
+.DS_Store

@@ -1,0 +1,54 @@
+data:
+  symbol: "SPY"
+  start: "2000-01-01"
+  end: null
+
+features:
+  windows: [5, 10, 21, 63]
+
+labels:
+  triple_barrier:
+    horizon: 10
+    pt_multiplier: 1.0
+    sl_multiplier: 1.0
+    vol_lookback: 20
+  k_day_return:
+    k: 5
+
+evaluation:
+  train_years: 5.0
+  test_months: 6.0
+  embargo_days: 5
+  purge_triple_barrier: true
+
+models:
+  lightgbm:
+    objective: "binary"
+    learning_rate: 0.03
+    num_leaves: 31
+    feature_fraction: 0.9
+    bagging_fraction: 0.9
+    bagging_freq: 1
+    min_data_in_leaf: 50
+    num_boost_round: 200
+    metric: "binary_logloss"
+    verbosity: -1
+  patchtst:
+    h: 5
+    input_size: 64
+    max_steps: 500
+    freq: "B"
+  timesfm:
+    max_context: 512
+    max_horizon: 64
+    forecast_horizon: 5
+    normalize_inputs: true
+
+backtest:
+  cost_bps: 2.0
+  cost_bps_sensitivity: [0, 1, 2, 5, 10]
+
+output:
+  results_dir: "results"
+
+seed: 42
