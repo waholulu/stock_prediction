@@ -23,7 +23,6 @@ from sklearn.metrics import (
     mean_absolute_error,
     roc_auc_score,
 )
-from sklearn.preprocessing import label_binarize
 
 from .evaluation import WalkForwardSpec, apply_purge, walk_forward_splits
 

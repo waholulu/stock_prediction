@@ -164,6 +164,7 @@ def step_report(
     results: dict[str, pd.DataFrame],
     backtest_out: dict,
     out_dir: str,
+    cost_bps: float = 2.0,
 ) -> None:
     print("[5/5] Results summary\n" + "=" * 60)
 
@@ -182,7 +183,7 @@ def step_report(
     print(t.to_string(index=False))
     print(f"\n  Mean: acc={t['accuracy'].mean():.4f}  MCC={t['mcc'].mean():.4f}")
 
-    print("\n— Backtest (OOS binary signal, cost={:.1f} bps) —".format(2.0))
+    print(f"\n— Backtest (OOS binary signal, cost={cost_bps:.1f} bps) —")
     s = backtest_out["summary"]
     for k, v in s.items():
         print(f"  {k:25s}: {v:.4f}")
@@ -212,7 +213,7 @@ def main() -> None:
     df, feat_cols = step_features(df)
     results = step_evaluate(df, feat_cols, spec)
     backtest_out = step_backtest(df, feat_cols, spec, args.cost_bps)
-    step_report(results, backtest_out, args.out_dir)
+    step_report(results, backtest_out, args.out_dir, cost_bps=args.cost_bps)
 
 
 if __name__ == "__main__":
