@@ -105,3 +105,66 @@ information into training.  Call `evaluation.apply_purge()` to remove such rows
 - Core dependencies: `pandas`, `numpy`, `scikit-learn`, `lightgbm`, `matplotlib`
 - Optional (live data): `yfinance` (requires additional transitive deps; see
   `COLAB_GUIDE.md` for a working install sequence)
+
+---
+
+## Current progress
+
+_Last updated: 2026-04-12_
+
+### Completed
+
+| # | Item | Notes |
+|---|---|---|
+| 1 | Research survey | `deep-research-report.md` — prioritised shortlist of 11 papers/platforms (2024–2026), compute requirements, and reproducible experiment blueprint |
+| 2 | Project scaffold | `src/`, `tests/`, `requirements.txt`, `.gitignore` |
+| 3 | Data module (`src/data.py`) | `generate_synthetic_ohlcv()` (GBM, reproducible, offline) + `load_ohlcv_from_yfinance()` with graceful fallback |
+| 4 | Feature engineering (`src/features.py`) | 30 leakage-safe rolling features across windows (5, 10, 21, 63): return mean/std/skew, momentum, HL range, OC return, volume change, vol ratio, calendar |
+| 5 | Labels (`src/labels.py`) | Next-day direction (binary), k-day forward return (regression), triple-barrier (ternary ±1/0) with exit-time output for purging |
+| 6 | Walk-forward evaluation (`src/evaluation.py`) | Rolling and expanding windows, configurable embargo, `apply_purge()` for triple-barrier leakage removal |
+| 7 | LightGBM baseline (`src/models.py`) | `walk_forward_evaluate()` for all three task types; fold-by-fold accuracy, MCC, AUC, MAE, RMSE, directional accuracy |
+| 8 | Backtest (`src/backtest.py`) | Transaction-cost-aware daily backtest; equity curve, annualised Sharpe, max drawdown, win rate |
+| 9 | Pipeline script (`run_pipeline.py`) | End-to-end CLI; all 5 steps; results saved to `results/*.csv` |
+| 10 | Test suite (`tests/`) | 53 unit tests, all passing; covers correctness, no-mutation guarantees, OHLC validity, no-future-leak, purge mechanics, metric ranges |
+| 11 | Documentation | `CLAUDE.md` (developer guide), `COLAB_GUIDE.md` (Google Colab step-by-step) |
+| 12 | Merged to `main` | Feature branch `claude/continue-progress-verification-ipW03` merged and pushed |
+
+### Known limitations / tech debt
+
+- `yfinance` install is fragile on some environments (missing `multitasking` wheel); the pipeline falls back to synthetic data automatically, but live-data tests are not part of CI.
+- Triple-barrier label generation is a pure-Python loop — slow on large datasets (>10k bars). A vectorised NumPy/Numba version would speed it up significantly.
+- The `results/` directory is git-ignored; there is no automated artefact upload or experiment tracking (e.g. MLflow, W&B).
+- `__pycache__/` and compiled `.pyc` files are committed — `.gitignore` covers new ones but the initial merge included them.
+
+---
+
+## Next steps
+
+Priority order follows the experiment sequence recommended in `deep-research-report.md`.
+
+### High priority
+
+| # | Task | Why |
+|---|---|---|
+| N1 | **Add PatchTST baseline** via NeuralForecast (`neuralforecast.models.PatchTST`) | Provides a deep-learning comparator against LightGBM; directly comparable walk-forward metrics |
+| N2 | **Add TimesFM / Chronos-Bolt zero-shot baseline** | "No training" comparator; quantifies how much value the trained models add |
+| N3 | **Vectorise triple-barrier label loop** | Current pure-Python loop is the pipeline bottleneck; replace with NumPy roll or Numba JIT |
+| N4 | **Fix `__pycache__` in git history** | Remove compiled bytecode from the repo (rewrite history or add to `.gitignore` and delete) |
+
+### Medium priority
+
+| # | Task | Why |
+|---|---|---|
+| N5 | **CI workflow** (GitHub Actions) | Auto-run `pytest tests/` on every push; enforce the "53 tests must pass" gate without manual checks |
+| N6 | **Experiment tracking** | Log fold metrics + hyperparameters to CSV/MLflow so multiple runs can be compared |
+| N7 | **Hyperparameter search for LightGBM** | Current params are fixed defaults; even a small grid search could meaningfully improve OOS metrics |
+| N8 | **Multi-asset extension** | Run the pipeline on S&P 500 constituents (cross-sectional framing) to get more signal — see SSPT/FinWorld in the research report |
+
+### Low priority / future
+
+| # | Task | Why |
+|---|---|---|
+| N9 | **EigenCluster tokenisation layer** | Research prototype (ICLR 2026); interesting as a representation learning experiment |
+| N10 | **LLM-agent strategy (FINSABER-style)** | Requires API keys; lower ROI than the model-stack improvements above |
+| N11 | **Regime labelling** | Annotate bull/bear/sideways regimes and condition model training/evaluation on them |
+| N12 | **Portfolio-level backtest** | Extend single-asset backtest to a multi-asset universe with position sizing and turnover constraints |
