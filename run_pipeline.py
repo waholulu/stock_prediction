@@ -22,13 +22,10 @@ from __future__ import annotations
 
 import argparse
 import sys
-import warnings
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-
-warnings.filterwarnings("ignore", category=UserWarning)
 
 # ── Ensure src is importable when run from project root ──────────────────────
 ROOT = Path(__file__).parent
@@ -54,6 +51,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--embargo-days", type=int, default=5)
     p.add_argument("--cost-bps", type=float, default=2.0, help="Round-trip transaction cost (bps).")
     p.add_argument("--out-dir", default="results", help="Directory to write CSV results.")
+    p.add_argument(
+        "--seed", type=int, default=42,
+        help="Global random seed for NumPy and LightGBM reproducibility.",
+    )
     return p.parse_args()
 
 
@@ -94,59 +95,46 @@ def step_evaluate(
     df: pd.DataFrame,
     feat_cols: list[str],
     spec: WalkForwardSpec,
-) -> dict[str, pd.DataFrame]:
+    seed: int = 42,
+) -> "tuple[dict[str, pd.DataFrame], pd.Series]":
     print("[3/5] Running walk-forward LightGBM evaluation …")
     results: dict[str, pd.DataFrame] = {}
 
     print("  · Binary classification (next-day direction) …")
-    results["binary"] = walk_forward_evaluate(
-        df, feat_cols, "y_dir", task="classify_binary", spec=spec
+    binary_metrics, oos_signal = walk_forward_evaluate(
+        df, feat_cols, "y_dir", task="classify_binary", spec=spec,
+        seed=seed, return_oos_predictions=True,
     )
+    results["binary"] = binary_metrics
 
     print("  · Regression (5-day forward return) …")
     results["regression"] = walk_forward_evaluate(
-        df, feat_cols, "y_5d", task="regress", spec=spec
+        df, feat_cols, "y_5d", task="regress", spec=spec, seed=seed,
     )
 
     print("  · Ternary classification with purging (triple-barrier) …")
     results["ternary"] = walk_forward_evaluate(
-        df, feat_cols, "y_tb", task="classify_ternary", spec=spec, purge=True
+        df, feat_cols, "y_tb", task="classify_ternary", spec=spec,
+        purge=True, seed=seed,
     )
 
-    return results
+    return results, oos_signal
 
 
 def step_backtest(
     df: pd.DataFrame,
     feat_cols: list[str],
-    spec: WalkForwardSpec,
+    oos_signal: pd.Series,
     cost_bps: float,
 ) -> dict[str, dict]:
-    """Re-run binary model to collect OOS predictions, then backtest."""
+    """Use pre-computed OOS signal from step_evaluate to run backtest.
+
+    oos_signal must be indexed like df.dropna(subset=feat_cols + ["y_dir"])
+    .reset_index(drop=True) — identical subset to walk_forward_evaluate binary.
+    """
     print("[4/5] Building OOS signal and running backtest …")
-    import lightgbm as lgb
-    from src.evaluation import walk_forward_splits, apply_purge
 
     df_clean = df.dropna(subset=feat_cols + ["y_dir"]).reset_index(drop=True)
-    X = df_clean[feat_cols].values.astype(np.float32)
-    y = df_clean["y_dir"].values.astype(int)
-    dates = df_clean["date"]
-
-    oos_signal = pd.Series(np.nan, index=df_clean.index)
-
-    for train_idx, test_idx, _ in walk_forward_splits(dates, spec):
-        if len(train_idx) < 10:
-            continue
-        X_tr = pd.DataFrame(X[train_idx], columns=feat_cols)
-        X_te = pd.DataFrame(X[test_idx], columns=feat_cols)
-        clf = lgb.LGBMClassifier(
-            objective="binary", learning_rate=0.03, num_leaves=31,
-            n_estimators=200, verbosity=-1,
-        )
-        clf.fit(X_tr, y[train_idx])
-        prob = clf.predict_proba(X_te)[:, 1]
-        signal = np.where(prob >= 0.5, 1, -1)
-        oos_signal.iloc[test_idx] = signal
 
     df_bt = df_clean.copy()
     df_bt["signal"] = oos_signal.values
@@ -202,6 +190,7 @@ def step_report(
 
 def main() -> None:
     args = parse_args()
+    np.random.seed(args.seed)
 
     spec = WalkForwardSpec(
         train_years=args.train_years,
@@ -211,8 +200,8 @@ def main() -> None:
 
     df = step_load(args)
     df, feat_cols = step_features(df)
-    results = step_evaluate(df, feat_cols, spec)
-    backtest_out = step_backtest(df, feat_cols, spec, args.cost_bps)
+    results, oos_signal = step_evaluate(df, feat_cols, spec, seed=args.seed)
+    backtest_out = step_backtest(df, feat_cols, oos_signal, args.cost_bps)
     step_report(results, backtest_out, args.out_dir, cost_bps=args.cost_bps)
 
 

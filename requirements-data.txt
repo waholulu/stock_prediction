@@ -1,0 +1,2 @@
+# Optional: required only for live Yahoo Finance data (load_ohlcv_from_yfinance)
+yfinance>=0.2.0,<1.0.0

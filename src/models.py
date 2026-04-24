@@ -65,7 +65,9 @@ def walk_forward_evaluate(
     task: Literal["classify_binary", "classify_ternary", "regress"] = "classify_binary",
     spec: WalkForwardSpec | None = None,
     purge: bool = False,
-) -> pd.DataFrame:
+    seed: int = 42,
+    return_oos_predictions: bool = False,
+) -> "pd.DataFrame | tuple[pd.DataFrame, pd.Series]":
     """Run walk-forward evaluation with LightGBM.
 
     Parameters
@@ -86,11 +88,20 @@ def walk_forward_evaluate(
     purge : bool
         If True, apply purging based on ``df["t_end"]`` (for triple-barrier
         labels).  Requires ``t_end`` column in ``df``.
+    seed : int
+        Random seed passed to all LightGBM instantiations. Default 42.
+    return_oos_predictions : bool
+        Only meaningful for ``task="classify_binary"``.  When True, also
+        return an OOS signal Series (values +1/-1, NaN where no prediction
+        was made).  Default False.
 
     Returns
     -------
-    pd.DataFrame
-        One row per fold with fold number and relevant metrics.
+    pd.DataFrame or (pd.DataFrame, pd.Series)
+        When ``return_oos_predictions=False``: one row per fold with metrics.
+        When ``return_oos_predictions=True`` (binary only): tuple of
+        (metrics_df, oos_signal) where oos_signal has +1/-1 values indexed
+        like the cleaned DataFrame.
     """
     if spec is None:
         spec = WalkForwardSpec()
@@ -108,6 +119,10 @@ def walk_forward_evaluate(
     )
 
     fold_metrics: list[dict] = []
+
+    oos_signal: "pd.Series | None" = None
+    if return_oos_predictions and task == "classify_binary":
+        oos_signal = pd.Series(np.nan, index=df_clean.index)
 
     for fold_i, (train_idx, test_idx, _) in enumerate(
         walk_forward_splits(dates, spec), start=1
@@ -127,12 +142,20 @@ def walk_forward_evaluate(
             if len(np.unique(y_train)) < 2:
                 continue
 
-            model = lgb.LGBMClassifier(**_LGBM_CLF_PARAMS)
+            model = lgb.LGBMClassifier(
+                **_LGBM_CLF_PARAMS,
+                random_state=seed,
+                deterministic=True,
+                force_row_wise=True,
+            )
             X_train_df = pd.DataFrame(X[train_idx], columns=feature_cols)
             X_test_df = pd.DataFrame(X[test_idx], columns=feature_cols)
             model.fit(X_train_df, y_train)
             prob = model.predict_proba(X_test_df)[:, 1]
             pred = (prob >= 0.5).astype(int)
+
+            if oos_signal is not None:
+                oos_signal.iloc[test_idx] = np.where(prob >= 0.5, 1, -1)
 
             metrics = {
                 "fold": fold_i,
@@ -158,7 +181,12 @@ def walk_forward_evaluate(
             params["objective"] = "multiclass"
             params["num_class"] = 3
             params["metric"] = "multi_logloss"
-            model = lgb.LGBMClassifier(**params)
+            model = lgb.LGBMClassifier(
+                **params,
+                random_state=seed,
+                deterministic=True,
+                force_row_wise=True,
+            )
             X_train_df = pd.DataFrame(X[train_idx], columns=feature_cols)
             X_test_df = pd.DataFrame(X[test_idx], columns=feature_cols)
             model.fit(X_train_df, y_train)
@@ -178,7 +206,12 @@ def walk_forward_evaluate(
             y_train = y[train_idx]
             y_test = y[test_idx]
 
-            model = lgb.LGBMRegressor(**_LGBM_REG_PARAMS)
+            model = lgb.LGBMRegressor(
+                **_LGBM_REG_PARAMS,
+                random_state=seed,
+                deterministic=True,
+                force_row_wise=True,
+            )
             X_train_df = pd.DataFrame(X[train_idx], columns=feature_cols)
             X_test_df = pd.DataFrame(X[test_idx], columns=feature_cols)
             model.fit(X_train_df, y_train)
@@ -198,4 +231,7 @@ def walk_forward_evaluate(
 
         fold_metrics.append(metrics)
 
-    return pd.DataFrame(fold_metrics)
+    metrics_df = pd.DataFrame(fold_metrics)
+    if return_oos_predictions and oos_signal is not None:
+        return metrics_df, oos_signal
+    return metrics_df

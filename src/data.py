@@ -28,7 +28,7 @@ def load_ohlcv_from_yfinance(
     except ImportError as exc:
         raise ImportError(
             "yfinance is required to fetch live data. "
-            "Install it with: pip install yfinance"
+            "Install it with: pip install -r requirements-data.txt"
         ) from exc
 
     df = yf.download(symbol, start=start, end=end, auto_adjust=False, progress=False)

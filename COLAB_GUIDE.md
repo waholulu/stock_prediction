@@ -1,5 +1,8 @@
 # Running the Stock Prediction Pipeline in Google Colab
 
+> **One-click version:** [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/waholulu/stock_prediction/blob/main/notebooks/colab_quickstart.ipynb)  
+> Open `notebooks/colab_quickstart.ipynb` for an automated version of this guide.
+
 This guide walks you through cloning the repository and running the full
 experiment pipeline in a free Google Colab notebook — no local Python install
 required.
@@ -27,23 +30,20 @@ Paste the following into the first cell and run it (`Shift+Enter`):
 
 ## Step 3 — Install dependencies
 
-Colab already ships with `pandas`, `numpy`, `scikit-learn`, and `matplotlib`.
-Run this cell to add the remaining packages:
+Run this cell to install the core pipeline dependencies:
 
 ```python
-# Core pipeline dependencies
-!pip install -q lightgbm
-
-# Optional — only needed for live Yahoo Finance data
-!pip install -q \
-    "yfinance>=0.2" \
-    pytz requests beautifulsoup4 curl_cffi \
-    frozendict peewee platformdirs websockets protobuf
+!pip install -q -r requirements.txt
 ```
 
-> **Note:** The `multitasking` wheel may fail to build on Colab's current
-> Python 3.x environment.  The pipeline automatically falls back to synthetic
-> data if `yfinance` cannot be imported, so this is not a blocker.
+**Optional** — only needed for live Yahoo Finance data (Step 6):
+
+```python
+!pip install -q -r requirements-data.txt
+```
+
+> The pipeline automatically falls back to synthetic data if `yfinance`
+> cannot be imported, so installing `requirements-data.txt` is never a blocker.
 
 ---
 
